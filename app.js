@@ -131,22 +131,8 @@ const downloadSingleItem = async (job, url, options, outTemplate, title = '') =>
     const { format, resolution, highest_fps, includeSubtitles } = options;
     const isVideo = format === 'mp4';
     const resInt = resolution ? parseInt(resolution, 10) : null;
-    let formatString = '';
-
-    const isFacebook = /facebook\.com/i.test(url);
-    const isNewgrounds = /newgrounds\.com/i.test(url);
-    const isSnapchatCdn = /sc-cdn\.net/i.test(url);
+    const sortArgs = isVideo ? (resInt ? ['-S', `res:${resInt}`] : []) + (highest_fps === 'no' ? ['-S', 'fps:30'] : []) : [];
     const isTumblr = /tumblr\.com/i.test(url);
-
-    if (isFacebook || isNewgrounds || isSnapchatCdn || isTumblr) {
-        formatString = 'best';
-    } else if (isVideo) {
-        const heightFilter = resInt ? `[height<=${resInt}]` : '';
-        const fpsFilter = highest_fps === 'no' ? '[fps<=30]' : '';
-        formatString = `bestvideo[vcodec^=avc]${heightFilter}${fpsFilter}+bestaudio[ext=m4a]/best[ext=mp4]${heightFilter}${fpsFilter}/best`;
-    } else {
-        formatString = 'bestaudio/best';
-    }
 
     const subtitleArgs = includeSubtitles ? ['--write-auto-subs', '--write-subs', '--embed-subs', '--sub-langs', 'en.*', '--convert-subs', 'srt'] : [];
     
@@ -161,9 +147,14 @@ const downloadSingleItem = async (job, url, options, outTemplate, title = '') =>
         thumbnailArgs = format !== 'wav' ? ['--write-thumbnail', '--embed-thumbnail', '--convert-thumbnails', 'jpg'] : [];
     }
     
-    let audioFormat = format;
-    if (format === 'ogg') {
-        audioFormat = 'vorbis';
+    let audioArgs = ['--audio-quality', '0'];
+    switch (format) {
+        case 'mp3':
+        case 'm4a':
+            audioArgs += ['-t', format === 'm4a' ? 'aac' : 'mp3'];
+            break;
+        default:
+            audioArgs += ['-x', '--audio-format', format === 'ogg' ? 'vorbis' : format];
     }
 
     const args = [
@@ -175,9 +166,9 @@ const downloadSingleItem = async (job, url, options, outTemplate, title = '') =>
         '--concurrent-fragments', '10',
         ...thumbnailArgs,
         ...subtitleArgs,
-        '-f', formatString,
+        ...sortArgs,
         '--match-filter', "live_status != 'is_live'",
-        ...(isVideo ? ['--merge-output-format', 'mp4'] : ['-x', '--audio-format', audioFormat, '--audio-quality', '0']),
+        ...(isVideo ? ['--merge-output-format', 'mp4', '--remux-video', 'mp4'] : audioArgs),
         ...getCookiesArgs(url),
         url,
     ];
@@ -203,18 +194,8 @@ const handlePlaylistDownload = async (job, url, entries, playlistTitle, options)
     const { format, resolution, highest_fps, includeSubtitles } = options;
     const isVideo = format === 'mp4';
     const resInt = resolution ? parseInt(resolution, 10) : null;
-    let formatString = '';
+    const sortArgs = isVideo ? (resInt ? ['-S', `res:${resInt}`] : []) + (highest_fps === 'no' ? ['-S', 'fps:30'] : []) : [];
     const isTumblr = /tumblr\.com/i.test(url);
-
-    if (isTumblr) {
-        formatString = 'best';
-    } else if (isVideo) {
-        const heightFilter = resInt ? `[height<=${resInt}]` : '';
-        const fpsFilter = highest_fps === 'no' ? '[fps<=30]' : '';
-        formatString = `bestvideo[vcodec^=avc]${heightFilter}${fpsFilter}+bestaudio[ext=m4a]/best[ext=mp4]${heightFilter}${fpsFilter}/best`;
-    } else {
-        formatString = 'bestaudio/best';
-    }
 
     const subtitleArgs = includeSubtitles ? ['--write-auto-subs', '--write-subs', '--embed-subs', '--sub-langs', 'en.*', '--convert-subs', 'srt'] : [];
     let thumbnailArgs = [];
@@ -223,12 +204,17 @@ const handlePlaylistDownload = async (job, url, entries, playlistTitle, options)
     }
 
     const outTemplate = path.join(playlistDir, `%(uploader,channel)s - %(title)s.%(ext)s`);
-    let audioFormat = format;
-    if (format === 'ogg') {
-        audioFormat = 'vorbis';
+    let audioArgs = ['--audio-quality', '0'];
+    switch (format) {
+        case 'mp3':
+        case 'm4a':
+            audioArgs += ['-t', format === 'm4a' ? 'aac' : 'mp3'];
+            break;
+        default:
+            audioArgs += ['-x', '--audio-format', format === 'ogg' ? 'vorbis' : format];
     }
 
-    const sleepArgs = entries.length > 50 ? ['--sleep-interval', '5', '--max-sleep-interval', '10'] : [];
+    const sleepArgs = entries.length > 50 ? ['-t', 'sleep'] : [];
     const args = [
         '--no-playlist',
         '--no-write-comments',
@@ -239,9 +225,9 @@ const handlePlaylistDownload = async (job, url, entries, playlistTitle, options)
         ...sleepArgs,
         ...thumbnailArgs,
         ...subtitleArgs,
-        '-f', formatString,
+        '-f', sortArgs,
         '--match-filter', "live_status != 'is_live'",
-        ...(isVideo ? ['--merge-output-format', 'mp4'] : ['-x', '--audio-format', audioFormat, '--audio-quality', '0']),
+        ...(isVideo ? ['--merge-output-format', 'mp4', '--remux-video', 'mp4'] : audioArgs),
         ...getCookiesArgs(url),
         ...entries.map(entry => entry.url),
     ];
